@@ -1,0 +1,111 @@
+apiVersion: openclaw.rocks/v1alpha1
+kind: OpenClawInstance
+metadata:
+  name: openclaw-agent
+  namespace: openclaw
+
+spec:
+  initContainers:
+    # ========================
+    # tools installer
+    # ========================
+    - name: install-tools
+      image: curlimages/curl:8.5.0
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+
+          # install kubectl
+          curl -L --retry 3 --retry-delay 5 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl \
+            -o /tools/kubectl
+          chmod +x /tools/kubectl
+
+          # install jq
+          curl -L --retry 3 --retry-delay 5 https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 \
+            -o /tools/jq
+          chmod +x /tools/jq
+
+      volumeMounts:
+        - name: tools-bin
+          mountPath: /tools
+
+  extraVolumes:
+    - name: tools-bin
+      emptyDir: {}
+
+  extraVolumeMounts:
+    - name: tools-bin
+      mountPath: /usr/local/bin/kubectl
+      subPath: kubectl
+      readOnly: true
+    - name: tools-bin
+      mountPath: /usr/local/bin/jq
+      subPath: jq
+      readOnly: true
+
+  envFrom:
+    - secretRef:
+        name: openclaw-secrets
+
+  storage:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+  config:
+    raw:
+      agents:
+        defaults:
+          model:
+            primary: "openai/gpt-4o-mini"
+
+      session:
+        scope: per-sender
+
+      gateway:
+        controlUi:
+          dangerouslyDisableDeviceAuth: true
+          allowedOrigins:
+            - "*"
+
+      channels:
+        telegram:
+          enabled: true
+          botToken: "${TELEGRAM_BOT_TOKEN}"
+          dmPolicy: allowlist
+          allowFrom:
+            - "1000839880"
+          groupPolicy: allowlist
+          groupAllowFrom:
+            - "1000839880"
+          streaming: partial
+          replyToMode: first
+          textChunkLimit: 3500
+          chunkMode: newline
+          linkPreview: true
+          mediaMaxMb: 50
+          retry:
+            attempts: 3
+            minDelayMs: 1000
+            maxDelayMs: 5000
+          capabilities:
+            inlineButtons: allowlist
+          commands:
+            nativeSkills: true
+          reactionNotifications: own
+          reactionLevel: minimal
+          actions:
+            sendMessage: true
+            deleteMessage: true
+            reactions: true
+            sticker: false
+
+  selfConfigure:
+    enabled: true
+    allowedActions:
+      - skills
+      - config
+      - envVars
+      - workspaceFiles
